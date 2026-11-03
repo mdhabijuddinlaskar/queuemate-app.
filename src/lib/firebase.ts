@@ -2,6 +2,7 @@ import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
 import { getFirestore, Firestore, doc, getDocFromServer } from 'firebase/firestore';
 import type { FirebaseClientConfig } from '../types';
+import appletConfig from '../../firebase-applet-config.json';
 
 export enum OperationType {
   CREATE = 'create',
@@ -34,10 +35,23 @@ const LOCAL_STORAGE_KEY = 'queuemate_firebase_config';
 /**
  * Retrieve current Firebase configuration.
  * Priority:
- * 1. Environment variables (VITE_FIREBASE_*)
- * 2. Stored configuration in localStorage (allows runtime setup in UI)
+ * 1. Persistent AI Studio applet config (firebase-applet-config.json)
+ * 2. Environment variables (VITE_FIREBASE_*)
+ * 3. Stored configuration in localStorage (manual override fallback)
  */
 export function getFirebaseConfig(): FirebaseClientConfig | null {
+  // 1. Primary AI Studio persistent configuration
+  if (
+    appletConfig &&
+    appletConfig.apiKey &&
+    appletConfig.apiKey !== 'AIzaSy_YOUR_FIREBASE_API_KEY' &&
+    appletConfig.projectId &&
+    appletConfig.projectId !== 'remixed-project-id'
+  ) {
+    return appletConfig as FirebaseClientConfig;
+  }
+
+  // 2. Standard Environment variables (for Vercel or external hosting)
   const envConfig: FirebaseClientConfig = {
     apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
     authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '',
@@ -47,11 +61,11 @@ export function getFirebaseConfig(): FirebaseClientConfig | null {
     appId: import.meta.env.VITE_FIREBASE_APP_ID || '',
   };
 
-  if (envConfig.apiKey && envConfig.apiKey !== 'MY_FIREBASE_API_KEY' && envConfig.projectId) {
+  if (envConfig.apiKey && envConfig.apiKey !== 'AIzaSy_YOUR_FIREBASE_API_KEY' && envConfig.projectId) {
     return envConfig;
   }
 
-  // Check localStorage for manually entered configuration
+  // 3. Check localStorage for manually entered custom configuration
   try {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (saved) {
@@ -69,7 +83,6 @@ export function getFirebaseConfig(): FirebaseClientConfig | null {
 
 export function saveFirebaseConfig(config: FirebaseClientConfig) {
   localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(config));
-  // Reload window to re-initialize SDK cleanly with new credentials
   window.location.reload();
 }
 
@@ -82,7 +95,7 @@ export const isFirebaseConfigured = (): boolean => {
   return getFirebaseConfig() !== null;
 };
 
-// Initialize Firebase App
+// Singleton initialization to prevent repeated initialization
 let app: FirebaseApp | null = null;
 let authInstance: Auth | null = null;
 let dbInstance: Firestore | null = null;
@@ -93,7 +106,10 @@ if (activeConfig) {
   try {
     app = getApps().length > 0 ? getApp() : initializeApp(activeConfig);
     authInstance = getAuth(app);
-    dbInstance = getFirestore(app);
+    // CRITICAL: Must use firestoreDatabaseId when provisioned with a custom database ID in Google AI Studio
+    dbInstance = activeConfig.firestoreDatabaseId
+      ? getFirestore(app, activeConfig.firestoreDatabaseId)
+      : getFirestore(app);
   } catch (error) {
     console.error('Error initializing Firebase with active configuration:', error);
   }
@@ -146,10 +162,17 @@ export async function testConnection(): Promise<{ connected: boolean; message: s
     if (error instanceof Error && error.message.includes('the client is offline')) {
       return { connected: false, message: 'Firestore client is offline. Check network or rules.' };
     }
-    // "permission-denied" or "not-found" is normal because test/connection document does not exist
+    // "permission-denied" or "not-found" is expected since test/connection document does not exist
     if (error?.code === 'permission-denied' || error?.message?.includes('Missing or insufficient permissions')) {
       return { connected: true, message: 'Connected to Firestore (Security Rules Active).' };
     }
     return { connected: true, message: 'Connected to Cloud Firestore.' };
   }
+}
+
+// Initial connection test on application boot
+if (dbInstance) {
+  testConnection().catch((err) => {
+    console.debug('Firestore boot connection test:', err);
+  });
 }

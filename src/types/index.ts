@@ -81,4 +81,5 @@ export interface FirebaseClientConfig {
   storageBucket: string;
   messagingSenderId: string;
   appId: string;
+  firestoreDatabaseId?: string;
 }
