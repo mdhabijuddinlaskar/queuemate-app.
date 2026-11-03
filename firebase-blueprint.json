@@ -1,0 +1,120 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User account and operator profile associated with a business tenant",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "format": "email", "maxLength": 256 },
+        "fullName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "businessId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["uid", "email", "fullName", "businessId", "createdAt", "updatedAt"]
+    },
+    "Business": {
+      "title": "Business",
+      "description": "Business profile, queue operational status, and timing configurations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "ownerId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "type": {
+          "type": "string",
+          "enum": ["Clinic", "Salon", "Service Centre", "Other"]
+        },
+        "avgServiceMinutes": { "type": "number" },
+        "tokenPrefix": { "type": "string", "maxLength": 6 },
+        "status": {
+          "type": "string",
+          "enum": ["open", "paused", "closed"]
+        },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "ownerId", "name", "type", "avgServiceMinutes", "status", "createdAt", "updatedAt"]
+    },
+    "TokenItem": {
+      "title": "TokenItem",
+      "description": "Digital queue token issued to a customer for a given day",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "businessId": { "type": "string", "maxLength": 128 },
+        "ownerId": { "type": "string", "maxLength": 128 },
+        "tokenNumber": { "type": "string", "maxLength": 30 },
+        "sequenceNumber": { "type": "number" },
+        "dateStr": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "customerName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "customerPhone": { "type": "string", "maxLength": 30 },
+        "status": {
+          "type": "string",
+          "enum": ["waiting", "serving", "completed", "skipped", "cancelled"]
+        },
+        "createdAt": { "type": "number" },
+        "servedAt": { "type": "number" },
+        "completedAt": { "type": "number" },
+        "skippedAt": { "type": "number" },
+        "cancelledAt": { "type": "number" },
+        "notes": { "type": "string", "maxLength": 300 }
+      },
+      "required": ["id", "businessId", "ownerId", "tokenNumber", "sequenceNumber", "dateStr", "customerName", "status", "createdAt"]
+    },
+    "DailyCounter": {
+      "title": "DailyCounter",
+      "description": "Atomic sequential counter tracking highest issued token for a business on a specific date",
+      "type": "object",
+      "properties": {
+        "businessId": { "type": "string", "maxLength": 128 },
+        "dateStr": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        "lastSequenceNumber": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["businessId", "dateStr", "lastSequenceNumber", "updatedAt"]
+    },
+    "QueueActivity": {
+      "title": "QueueActivity",
+      "description": "Audit and operational activity entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "businessId": { "type": "string", "maxLength": 128 },
+        "ownerId": { "type": "string", "maxLength": 128 },
+        "tokenNumber": { "type": "string", "maxLength": 30 },
+        "customerName": { "type": "string", "maxLength": 100 },
+        "type": {
+          "type": "string",
+          "enum": ["issued", "called", "completed", "skipped", "cancelled", "status_changed"]
+        },
+        "message": { "type": "string", "maxLength": 250 },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["id", "businessId", "ownerId", "type", "message", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile records containing account metadata and business link"
+    },
+    "/businesses/{businessId}": {
+      "schema": "Business",
+      "description": "Business entity holding service duration and queue configuration"
+    },
+    "/counters/{counterId}": {
+      "schema": "DailyCounter",
+      "description": "Daily sequential token counter"
+    },
+    "/tokens/{tokenId}": {
+      "schema": "TokenItem",
+      "description": "Daily queue tokens issued to customers"
+    },
+    "/activities/{activityId}": {
+      "schema": "QueueActivity",
+      "description": "Queue activity log entries for live feed"
+    }
+  }
+}

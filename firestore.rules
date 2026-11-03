@@ -1,0 +1,89 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: Default-deny all unexpected paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Common Security Helper Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // 1. Users Collection
+    match /users/{userId} {
+      allow get: if isSignedIn() && request.auth.uid == userId;
+      allow list: if false; // Disallow user enumeration
+      allow create: if isSignedIn() &&
+        request.auth.uid == userId &&
+        incoming().uid == request.auth.uid &&
+        incoming().fullName is string && incoming().fullName.size() <= 100;
+      allow update: if isSignedIn() &&
+        request.auth.uid == userId &&
+        incoming().uid == existing().uid &&
+        incoming().fullName is string && incoming().fullName.size() <= 100;
+      allow delete: if false;
+    }
+
+    // 2. Businesses Collection
+    match /businesses/{businessId} {
+      // Public read allows customer waiting room display to show business name & timing
+      allow get, list: if true;
+      allow create: if isSignedIn() &&
+        isValidId(businessId) &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().name is string && incoming().name.size() <= 120;
+      allow update: if isSignedIn() &&
+        existing().ownerId == request.auth.uid &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().name is string && incoming().name.size() <= 120;
+      allow delete: if isSignedIn() &&
+        existing().ownerId == request.auth.uid;
+    }
+
+    // 3. Counters Collection (Atomic daily numbering)
+    match /counters/{counterId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() &&
+        incoming().lastSequenceNumber is number &&
+        incoming().lastSequenceNumber >= 0;
+      allow delete: if false;
+    }
+
+    // 4. Tokens Collection
+    match /tokens/{tokenId} {
+      // Public read allows customer-facing TV display to render current queue status
+      allow get, list: if true;
+      allow create: if isSignedIn() &&
+        incoming().ownerId == request.auth.uid &&
+        incoming().customerName is string && incoming().customerName.size() <= 100 &&
+        incoming().tokenNumber is string && incoming().tokenNumber.size() <= 30;
+      allow update: if isSignedIn() &&
+        existing().ownerId == request.auth.uid &&
+        incoming().ownerId == existing().ownerId;
+      allow delete: if isSignedIn() &&
+        existing().ownerId == request.auth.uid;
+    }
+
+    // 5. Activities Collection (Live feed & audit log)
+    match /activities/{activityId} {
+      allow read: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && incoming().ownerId == request.auth.uid;
+      allow update, delete: if false;
+    }
+  }
+}
